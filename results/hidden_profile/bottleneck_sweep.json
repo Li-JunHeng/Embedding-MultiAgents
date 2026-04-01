@@ -1,0 +1,51 @@
+[
+  {
+    "method": "No Communication",
+    "msg_bytes": 0,
+    "overall": 0.573,
+    "comm": 0.146,
+    "local": 0.927
+  },
+  {
+    "method": "Det Bottleneck dim=4",
+    "msg_bytes": 8,
+    "overall": 0.57,
+    "comm": 0.129,
+    "local": 0.936
+  },
+  {
+    "method": "Det Bottleneck dim=8",
+    "msg_bytes": 16,
+    "overall": 0.815,
+    "comm": 0.645,
+    "local": 0.957
+  },
+  {
+    "method": "Det Bottleneck dim=16",
+    "msg_bytes": 32,
+    "overall": 0.674,
+    "comm": 0.361,
+    "local": 0.934
+  },
+  {
+    "method": "Det Bottleneck dim=32",
+    "msg_bytes": 64,
+    "overall": 0.689,
+    "comm": 0.397,
+    "local": 0.931
+  },
+  {
+    "method": "VAE Bottleneck dim=16",
+    "msg_bytes": 32,
+    "overall": 0.701,
+    "comm": 0.391,
+    "local": 0.959
+  },
+  {
+    "method": "Full Mean Pool",
+    "msg_bytes": 10240,
+    "overall": 0.906,
+    "comm": 0.807,
+    "local": 0.989
+  }
+]

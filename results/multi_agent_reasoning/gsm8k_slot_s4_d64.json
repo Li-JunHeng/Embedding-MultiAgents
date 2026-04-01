@@ -1,0 +1,1 @@
+{"method": "slot_mas", "model": "/data1/liyuejia/models/Qwen3-14B", "task": "gsm8k", "prompt": "sequential", "split": "test", "seed": 42, "max_samples": 100, "accuracy": 0.86, "correct": 86, "total": 100, "total_time_sec": 5626.9321, "time_per_sample_sec": 56.2693, "num_slots": 4, "slot_dim": 64, "latent_steps": 10, "msg_bytes_per_agent": 512, "total_msg_bytes": 1536}
