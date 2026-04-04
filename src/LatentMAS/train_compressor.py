@@ -312,7 +312,7 @@ def _load_task(args: argparse.Namespace) -> list:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, required=True,
-                        help="HuggingFace model name or local path (e.g. 'Qwen/Qwen3-14B')")
+                        help="HuggingFace model name or local path (e.g. 'Qwen/Qwen3-8B')")
     parser.add_argument(
         "--task",
         type=str,

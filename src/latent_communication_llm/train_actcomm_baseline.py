@@ -1,8 +1,8 @@
 """Activation Communication Baseline (ActComm)
 
 Two variants:
-  ActComm_Pool : message = mean_pool(last_layer_doc_hidden)  [5120 fp16 = 10 KB]
-  ActComm_Full : message = all_positions(last_layer_doc_hidden) [192x5120 fp16 = 374 KB]
+  ActComm_Pool : message = mean_pool(last_layer_doc_hidden)  [4096 fp16 = 8 KB]
+  ActComm_Full : message = all_positions(last_layer_doc_hidden) [192x4096 fp16 ≈ 1.5 MB]
                  receiver uses query-conditioned cross-attention over the full sequence
 
 Both use pre-extracted features from run_qwen_handoff.py (train/val/test_features.pt).
@@ -20,7 +20,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-HIDDEN_DIM = 5120
+HIDDEN_DIM = 4096  # Qwen3-8B last-layer width
 PROJ_DIM = 512       # internal projection dim for ActComm_Full cross-attn
 
 
@@ -39,11 +39,11 @@ def mean_pool(doc_hidden: torch.Tensor, doc_mask: torch.Tensor) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 
 class ActCommPoolModel(nn.Module):
-    """Message = mean-pooled doc hidden state.  5120 fp16 = 10240 B."""
+    """Message = mean-pooled doc hidden state.  4096 fp16 = 8192 B."""
 
     def __init__(self, hidden_dim: int, num_answers: int) -> None:
         super().__init__()
-        d = hidden_dim // 8  # 640
+        d = hidden_dim // 8  # 512 @ 4096-dim backbone
         self.msg_proj = nn.Sequential(
             nn.LayerNorm(hidden_dim),
             nn.Linear(hidden_dim, d),
@@ -85,7 +85,7 @@ class ActCommPoolModel(nn.Module):
 # ---------------------------------------------------------------------------
 
 class ActCommFullModel(nn.Module):
-    """Message = full last-layer doc hidden sequence.  192*5120 fp16 = 374 KB.
+    """Message = full last-layer doc hidden sequence.  192×4096 fp16 ≈ 1.5 MB.
     Receiver uses query-conditioned cross-attention (like our slot receiver but
     over the raw activation sequence instead of learned slots)."""
 
@@ -243,7 +243,7 @@ def main() -> None:
     results = {}
 
     # ---- ActComm_Pool ----
-    print("\n=== ActComm_Pool (mean pool, 5120 fp16 = 10 KB) ===")
+    print("\n=== ActComm_Pool (mean pool, 4096 fp16 = 8 KB) ===")
     pool_model = ActCommPoolModel(HIDDEN_DIM, num_answers).to(device)
     pool_res = train_one(
         pool_model, train_loader, val_loader, test_loader,
@@ -259,7 +259,7 @@ def main() -> None:
     }
 
     # ---- ActComm_Full ----
-    print("\n=== ActComm_Full (full sequence cross-attn, 192×5120 fp16 = 374 KB) ===")
+    print("\n=== ActComm_Full (full sequence cross-attn, 192×4096 fp16 ≈ 1.5 MB) ===")
     full_model = ActCommFullModel(HIDDEN_DIM, num_answers).to(device)
     full_res = train_one(
         full_model, train_loader, val_loader, test_loader,

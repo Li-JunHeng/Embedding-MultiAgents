@@ -1,7 +1,7 @@
 #!/bin/bash
 # Train slot compressor (recommended pipeline)
 # Usage: bash scripts/train_slot_compressor.sh <MODEL_PATH> [TASK] [GPUS]
-# Example: bash scripts/train_slot_compressor.sh Qwen/Qwen3-14B gsm8k 0,1,2
+# Example: bash scripts/train_slot_compressor.sh Qwen/Qwen3-8B gsm8k 0,1,2
 set -e
 
 MODEL="${1:?Usage: $0 <model_path> [task] [gpu_ids]}"

@@ -971,7 +971,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--data-dir", type=Path, default=Path("data/qasper"))
-    parser.add_argument("--model-path", type=str, default="Qwen/Qwen3-14B")
+    parser.add_argument("--model-path", type=str, default="Qwen/Qwen3-8B")
     parser.add_argument("--train-size", type=int, default=600)
     parser.add_argument("--val-size", type=int, default=150)
     parser.add_argument("--test-size", type=int, default=150)

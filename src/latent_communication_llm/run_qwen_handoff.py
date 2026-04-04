@@ -1065,7 +1065,7 @@ def save_json(path: Path, payload: dict) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--model-path", type=str, default="Qwen/Qwen3-14B")
+    parser.add_argument("--model-path", type=str, default="Qwen/Qwen3-8B")
     parser.add_argument("--train-size", type=int, default=1200)
     parser.add_argument("--val-size", type=int, default=200)
     parser.add_argument("--test-size", type=int, default=200)
