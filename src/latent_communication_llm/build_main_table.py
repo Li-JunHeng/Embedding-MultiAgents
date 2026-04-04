@@ -66,7 +66,7 @@ def render_latex(rows: list[dict[str, str]]) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-dir", type=Path, required=True)
-    parser.add_argument("--model-path", type=str, default="Qwen/Qwen3-14B")
+    parser.add_argument("--model-path", type=str, default="Qwen/Qwen3-8B")
     parser.add_argument("--num-examples", type=int, default=40)
     args = parser.parse_args()
 
@@ -108,7 +108,7 @@ def main() -> None:
         if not stage["name"].startswith("stage"):
             continue
         stage_cfg = run_module.StageConfig(**stage)
-        model = run_module.LatentHandoffModel(5120, len(run_module.ANSWER_VOCAB), dataset_cfg, stage_cfg).to(device)
+        model = run_module.LatentHandoffModel(4096, len(run_module.ANSWER_VOCAB), dataset_cfg, stage_cfg).to(device)
         model.load_state_dict(torch.load(args.run_dir / f"{stage_cfg.name}.pt", map_location="cpu"))
         model.eval()
         latent_models[stage_cfg.name] = model
@@ -117,7 +117,7 @@ def main() -> None:
     if stage4_info is not None:
         parent_stage_cfg_data = next(stage for stage in metadata["stages"] if stage["name"] == stage4_info["metrics"]["config"]["parent_stage"])
         parent_stage_cfg = run_module.StageConfig(**parent_stage_cfg_data)
-        stage4_model = run_module.LatentHandoffModel(5120, len(run_module.ANSWER_VOCAB), dataset_cfg, parent_stage_cfg).to(device)
+        stage4_model = run_module.LatentHandoffModel(4096, len(run_module.ANSWER_VOCAB), dataset_cfg, parent_stage_cfg).to(device)
         stage4_model.load_state_dict(torch.load(stage4_info["checkpoint_path"], map_location="cpu"))
         stage4_model.eval()
 

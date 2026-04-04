@@ -53,7 +53,7 @@ def render_table(rows: list[dict[str, str]]) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-dir", type=Path, required=True)
-    parser.add_argument("--model-path", type=str, default="Qwen/Qwen3-14B")
+    parser.add_argument("--model-path", type=str, default="Qwen/Qwen3-8B")
     parser.add_argument("--num-examples", type=int, default=40)
     parser.add_argument("--latent-stage", type=str, default="stage2_purified")
     args = parser.parse_args()
@@ -74,7 +74,7 @@ def main() -> None:
     dataset_cfg = run_module.DatasetConfig(**metadata["dataset"])
     stage_cfg_data = next(stage for stage in metadata["stages"] if stage["name"] == args.latent_stage)
     stage_cfg = run_module.StageConfig(**stage_cfg_data)
-    hidden_dim = 5120
+    hidden_dim = 4096  # Qwen3-8B
     latent_model = run_module.LatentHandoffModel(hidden_dim, len(run_module.ANSWER_VOCAB), dataset_cfg, stage_cfg).to(device)
     latent_model.load_state_dict(torch.load(args.run_dir / f"{args.latent_stage}.pt", map_location="cpu"))
     latent_model.eval()

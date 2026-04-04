@@ -1,7 +1,7 @@
 #!/bin/bash
 # Full benchmark comparison: baseline vs latent_mas vs slot_mas
 # Usage: bash scripts/run_benchmark.sh <MODEL_PATH> [GPUS]
-# Example: bash scripts/run_benchmark.sh Qwen/Qwen3-14B 0,1,2
+# Example: bash scripts/run_benchmark.sh Qwen/Qwen3-8B 0,1,2
 set -e
 
 MODEL="${1:?Usage: $0 <model_path> [gpu_ids]}"

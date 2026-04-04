@@ -81,7 +81,7 @@ class HiddenProfileConfig:
     lr: float = 1e-3
     weight_decay: float = 1e-3
     # paths
-    model_path: str = "Qwen/Qwen3-14B"
+    model_path: str = "Qwen/Qwen3-8B"
     output_dir: str = "results/hidden_profile"
 
 
@@ -533,7 +533,7 @@ def main():
     set_seed(cfg.seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    hidden_dim = 5120  # Qwen3-14B
+    hidden_dim = 4096  # Qwen3-8B
     num_answers = len(ANSWER_VOCAB)
 
     # ── Step 1: Generate data ──

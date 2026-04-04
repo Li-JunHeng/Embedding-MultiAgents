@@ -3,8 +3,8 @@
 Sender computes the full KV cache from the document forward pass and passes it
 as prefix to the receiver.  No training required — purely inference-time.
 
-Message size = 40 layers × 2 × 8 KV-heads × seq_len × 128 × 2 bytes
-             ≈ 31.5 MB per sample for seq_len=192 (Qwen3-14B bfloat16).
+Message size = 36 layers × 2 × 8 KV-heads × seq_len × 128 × 2 bytes
+             ≈ 27 MB per sample for seq_len=192 (Qwen3-8B bfloat16).
 
 Usage:
     python run_kvcomm_baseline.py \
@@ -98,7 +98,7 @@ def greedy_decode(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-dir",        type=Path, default=Path("results/full_run_20260316"))
-    parser.add_argument("--model-path",     type=str,  default="Qwen/Qwen3-14B")
+    parser.add_argument("--model-path",     type=str,  default="Qwen/Qwen3-8B")
     parser.add_argument("--num-examples",   type=int,  default=40)
     parser.add_argument("--max-doc-length", type=int,  default=192)
     args = parser.parse_args()
@@ -119,7 +119,7 @@ def main() -> None:
     print(f"Evaluating KVComm on {len(test_samples)} samples …")
 
     # ---- load model ----
-    print("Loading Qwen3-14B …")
+    print("Loading Qwen3-8B …")
     tokenizer, model = load_qwen(args.model_path)
     eos_id = tokenizer.eos_token_id or 2
     device = next(model.parameters()).device
