@@ -17,6 +17,15 @@ class MemoryEntry:
     value_tokens: torch.Tensor
 
 
+ROLE_MAP: Dict[str, int] = {
+    "planner": 0,
+    "critic": 1,
+    "refiner": 2,
+    "judger": 3,
+}
+NUM_ROLES: int = len(ROLE_MAP)
+
+
 class LatentMemoryAdapter(nn.Module):
     def __init__(self, d_model: int, memory_dim: int) -> None:
         super().__init__()
@@ -24,9 +33,20 @@ class LatentMemoryAdapter(nn.Module):
         self.memory_dim = memory_dim
         self.layer_norm = nn.LayerNorm(d_model)
         self.memory_proj = nn.Linear(d_model, memory_dim, bias=False)
+        self.role_embeddings = nn.Embedding(NUM_ROLES, d_model)
 
-    def compress_hidden_states(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        return self.memory_proj(self.layer_norm(hidden_states))
+    def compress_hidden_states(
+        self,
+        hidden_states: torch.Tensor,
+        role_id: Optional[int] = None,
+    ) -> torch.Tensor:
+        h = self.layer_norm(hidden_states)
+        if role_id is not None:
+            role_emb = self.role_embeddings(
+                torch.tensor(role_id, device=h.device)
+            )
+            h = h + role_emb
+        return self.memory_proj(h)
 
     def read(
         self,
@@ -78,7 +98,10 @@ class PerSampleMemoryBank:
             raise ValueError('hidden_seq must have shape [tokens, d_model]')
 
         hidden_seq = hidden_seq.detach()
-        compressed = adapter.compress_hidden_states(hidden_seq.unsqueeze(0)).squeeze(0).detach()
+        role_id = ROLE_MAP.get(agent_role)
+        compressed = adapter.compress_hidden_states(
+            hidden_seq.unsqueeze(0), role_id=role_id
+        ).squeeze(0).detach()
         entry = MemoryEntry(
             agent_role=agent_role,
             token_count=int(hidden_seq.shape[0]),

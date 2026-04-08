@@ -64,6 +64,15 @@ class MemoryMASMethod:
         self.memory_adapter = LatentMemoryAdapter(d_model=d_model, memory_dim=memory_dim).to(self._memory_device).to(
             self._dtype
         )
+
+        adapter_path = getattr(args, "adapter_path", None)
+        if adapter_path:
+            print(f"[memory_mas] Loading trained adapter from {adapter_path}")
+            state = torch.load(adapter_path, map_location=self._memory_device, weights_only=True)
+            self.memory_adapter.load_state_dict(state)
+        else:
+            print("[memory_mas] WARNING: Using random adapter weights (not trained)")
+
         self.memory_adapter.eval()
 
     def _build_messages(self, item: Dict, role: str) -> List[Dict]:

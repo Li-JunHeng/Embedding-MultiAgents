@@ -112,6 +112,7 @@ def main():
     parser.add_argument("--slot_dim", type=int, default=64, help="Slot dimension for slot_mas bottleneck (default 64)")
     parser.add_argument("--compressor_path", type=str, default=None, help="Path to trained compressor weights for slot_mas")
     parser.add_argument("--memory_dim", type=int, default=256, help="Compressed retrieval dimension for memory_mas")
+    parser.add_argument("--adapter_path", type=str, default=None, help="Path to trained LatentMemoryAdapter weights for memory_mas")
     parser.add_argument(
         "--memory_device",
         type=str,
@@ -297,6 +298,7 @@ def main():
     elif args.method == "memory_mas":
         result_dict["latent_steps"] = args.latent_steps
         result_dict["memory_dim"] = args.memory_dim
+        result_dict["adapter_path"] = args.adapter_path
     print(json.dumps(result_dict, ensure_ascii=False))
 
 
