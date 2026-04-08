@@ -44,9 +44,16 @@ compressed-agent-communication/
 │   ├── qasper/
 │   ├── multi_agent_reasoning/
 │   └── synthetic/
-└── scripts/
-    ├── run_benchmark.sh         ← Full benchmark comparison
-    └── train_slot_compressor.sh ← Recommended training pipeline
+└── doc/
+    └── scripts/                 ← Env, reproduce, monitor, benchmark helpers
+        ├── env_autodl.sh
+        ├── start_up.sh
+        ├── reproduce_autodl.sh
+        ├── monitor_repro.sh
+        ├── stop_repro.sh
+        ├── run_benchmark.sh
+        ├── run_llm_smoke.sh
+        └── train_slot_compressor.sh
 ```
 
 ## Quick Start
@@ -61,14 +68,14 @@ pip install torch transformers datasets tqdm vllm
 
 ```bash
 # Compare baseline / latent_mas / slot_mas on GSM8K, ARC, GPQA, etc.
-bash scripts/run_benchmark.sh /path/to/Qwen3-14B 0,1,2
+bash doc/scripts/run_benchmark.sh /path/to/Qwen3-14B 0,1,2
 ```
 
 ### 2. Train Slot Compressor
 
 ```bash
 # Collect hidden states + train compressor (slot-aligned v2 pipeline)
-bash scripts/train_slot_compressor.sh /path/to/Qwen3-14B gsm8k 0,1,2
+bash doc/scripts/train_slot_compressor.sh /path/to/Qwen3-14B gsm8k 0,1,2
 ```
 
 ### 3. Evaluate Trained Compressor

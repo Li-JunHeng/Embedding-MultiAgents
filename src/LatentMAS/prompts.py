@@ -3,7 +3,7 @@ def build_agent_message_sequential_latent_mas(role: str, question: str, context:
 
     system_message = "You are Qwen, created by Alibaba Cloud. You are a helpful assistant."
 
-    assert method in ["latent_mas", "slot_mas"], "this prompt only for latent_mas/slot_mas method"
+    assert method in ["latent_mas", "slot_mas", "memory_mas"], "this prompt only for latent_mas/slot_mas/memory_mas method"
 
     if role == "planner":
         user_prompt = f"""You are a Planner Agent. Given an input question, design a clear, step-by-step plan for how to solve the question.
@@ -118,7 +118,7 @@ def build_agent_message_hierarchical_latent_mas(role: str, question: str, contex
 
     system_message = "You are Qwen, created by Alibaba Cloud. You are a helpful assistant."
 
-    assert method in ["latent_mas", "slot_mas"], "this prompt only for latent_mas/slot_mas method"
+    assert method in ["latent_mas", "slot_mas", "memory_mas"], "this prompt only for latent_mas/slot_mas/memory_mas method"
 
     if args.task in ['gsm8k', 'aime2024', 'aime2025']:
         if role == "planner":

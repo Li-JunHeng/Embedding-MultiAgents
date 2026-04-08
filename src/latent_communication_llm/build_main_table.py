@@ -102,13 +102,14 @@ def main() -> None:
 
     tokenizer, qwen_model = run_module.load_qwen_model(args.model_path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    hidden_dim = int(getattr(qwen_model.config, "hidden_size", 4096))
 
     latent_models = {}
     for stage in metadata["stages"]:
         if not stage["name"].startswith("stage"):
             continue
         stage_cfg = run_module.StageConfig(**stage)
-        model = run_module.LatentHandoffModel(4096, len(run_module.ANSWER_VOCAB), dataset_cfg, stage_cfg).to(device)
+        model = run_module.LatentHandoffModel(hidden_dim, len(run_module.ANSWER_VOCAB), dataset_cfg, stage_cfg).to(device)
         model.load_state_dict(torch.load(args.run_dir / f"{stage_cfg.name}.pt", map_location="cpu"))
         model.eval()
         latent_models[stage_cfg.name] = model
@@ -117,7 +118,7 @@ def main() -> None:
     if stage4_info is not None:
         parent_stage_cfg_data = next(stage for stage in metadata["stages"] if stage["name"] == stage4_info["metrics"]["config"]["parent_stage"])
         parent_stage_cfg = run_module.StageConfig(**parent_stage_cfg_data)
-        stage4_model = run_module.LatentHandoffModel(4096, len(run_module.ANSWER_VOCAB), dataset_cfg, parent_stage_cfg).to(device)
+        stage4_model = run_module.LatentHandoffModel(hidden_dim, len(run_module.ANSWER_VOCAB), dataset_cfg, parent_stage_cfg).to(device)
         stage4_model.load_state_dict(torch.load(stage4_info["checkpoint_path"], map_location="cpu"))
         stage4_model.eval()
 

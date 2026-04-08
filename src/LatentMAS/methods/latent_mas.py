@@ -6,7 +6,10 @@ from prompts import build_agent_message_sequential_latent_mas, build_agent_messa
 from utils import extract_gsm8k_answer, normalize_answer, extract_markdown_python_block, run_with_timeout
 import torch
 import argparse
-from vllm import SamplingParams
+try:
+    from vllm import SamplingParams
+except ImportError:
+    SamplingParams = None  # optional; only needed for run_batch_vllm
 import pdb
 
 try:
@@ -43,11 +46,14 @@ class LatentMASMethod:
         if self.latent_only:
             self.sequential_info_only = True
 
-        self.sampling_params = SamplingParams(
-            temperature=temperature,
-            top_p=top_p,
-            max_tokens=args.max_new_tokens,
-        )
+        if SamplingParams is not None:
+            self.sampling_params = SamplingParams(
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=args.max_new_tokens,
+            )
+        else:
+            self.sampling_params = None
         self.task = args.task
 
     @staticmethod

@@ -276,5 +276,5 @@ compressed-agent-communication/
 │   ├── latent_communication_llm/   ← Hidden Profile + QASPER pipeline
 │   └── LatentMAS/                  ← Multi-agent (baseline/text/latent/slot)
 ├── results/                ← Symlinks to key result directories
-└── scripts/                ← Reproduction scripts
+└── doc/scripts/            ← Reproduction & AutoDL helper scripts
 ```

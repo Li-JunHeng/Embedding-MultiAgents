@@ -20,7 +20,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-HIDDEN_DIM = 4096  # Qwen3-8B last-layer width
 PROJ_DIM = 512       # internal projection dim for ActComm_Full cross-attn
 
 
@@ -39,11 +38,11 @@ def mean_pool(doc_hidden: torch.Tensor, doc_mask: torch.Tensor) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 
 class ActCommPoolModel(nn.Module):
-    """Message = mean-pooled doc hidden state.  4096 fp16 = 8192 B."""
+    """Message = mean-pooled doc hidden state (hidden_dim fp16 = 2*hidden_dim B)."""
 
     def __init__(self, hidden_dim: int, num_answers: int) -> None:
         super().__init__()
-        d = hidden_dim // 8  # 512 @ 4096-dim backbone
+        d = hidden_dim // 8
         self.msg_proj = nn.Sequential(
             nn.LayerNorm(hidden_dim),
             nn.Linear(hidden_dim, d),
@@ -72,12 +71,12 @@ class ActCommPoolModel(nn.Module):
         return self.readout(joint)
 
     @staticmethod
-    def message_floats() -> int:
-        return HIDDEN_DIM
+    def message_floats(hidden_dim: int) -> int:
+        return hidden_dim
 
     @staticmethod
-    def message_bytes() -> int:
-        return HIDDEN_DIM * 2
+    def message_bytes(hidden_dim: int) -> int:
+        return hidden_dim * 2
 
 
 # ---------------------------------------------------------------------------
@@ -85,7 +84,7 @@ class ActCommPoolModel(nn.Module):
 # ---------------------------------------------------------------------------
 
 class ActCommFullModel(nn.Module):
-    """Message = full last-layer doc hidden sequence.  192×4096 fp16 ≈ 1.5 MB.
+    """Message = full last-layer doc hidden sequence (seq_len × hidden_dim fp16).
     Receiver uses query-conditioned cross-attention (like our slot receiver but
     over the raw activation sequence instead of learned slots)."""
 
@@ -120,12 +119,12 @@ class ActCommFullModel(nn.Module):
         return self.readout(joint)
 
     @staticmethod
-    def message_floats(seq_len: int = 192) -> int:
-        return seq_len * HIDDEN_DIM
+    def message_floats(hidden_dim: int, seq_len: int = 192) -> int:
+        return seq_len * hidden_dim
 
     @staticmethod
-    def message_bytes(seq_len: int = 192) -> int:
-        return seq_len * HIDDEN_DIM * 2
+    def message_bytes(hidden_dim: int, seq_len: int = 192) -> int:
+        return seq_len * hidden_dim * 2
 
 
 # ---------------------------------------------------------------------------
@@ -236,6 +235,9 @@ def main() -> None:
     num_answers = int(splits["train"]["answer_id"].max().item()) + 1
     print(f"num_answers = {num_answers}")
 
+    hidden_dim = int(splits["train"]["doc_hidden"].size(-1))
+    print(f"hidden_dim = {hidden_dim} (from features)")
+
     train_loader = make_loader(splits["train"], args.batch_size, shuffle=True)
     val_loader   = make_loader(splits["val"],   args.batch_size, shuffle=False)
     test_loader  = make_loader(splits["test"],  args.batch_size, shuffle=False)
@@ -243,8 +245,8 @@ def main() -> None:
     results = {}
 
     # ---- ActComm_Pool ----
-    print("\n=== ActComm_Pool (mean pool, 4096 fp16 = 8 KB) ===")
-    pool_model = ActCommPoolModel(HIDDEN_DIM, num_answers).to(device)
+    print(f"\n=== ActComm_Pool (mean pool, {hidden_dim} fp16) ===")
+    pool_model = ActCommPoolModel(hidden_dim, num_answers).to(device)
     pool_res = train_one(
         pool_model, train_loader, val_loader, test_loader,
         epochs=args.epochs, lr=args.lr, device=device, label="Pool",
@@ -252,15 +254,15 @@ def main() -> None:
     torch.save(pool_res["best_state"], args.run_dir / "actcomm_pool_model.pt")
     results["actcomm_pool"] = {
         "method": "ActComm (Mean Pool)",
-        "message_floats": ActCommPoolModel.message_floats(),
-        "message_bytes": ActCommPoolModel.message_bytes(),
+        "message_floats": ActCommPoolModel.message_floats(hidden_dim),
+        "message_bytes": ActCommPoolModel.message_bytes(hidden_dim),
         "best_val_accuracy": pool_res["best_val_accuracy"],
         "test_accuracy": pool_res["test_accuracy"],
     }
 
     # ---- ActComm_Full ----
-    print("\n=== ActComm_Full (full sequence cross-attn, 192×4096 fp16 ≈ 1.5 MB) ===")
-    full_model = ActCommFullModel(HIDDEN_DIM, num_answers).to(device)
+    print(f"\n=== ActComm_Full (full sequence cross-attn, seq×{hidden_dim} fp16) ===")
+    full_model = ActCommFullModel(hidden_dim, num_answers).to(device)
     full_res = train_one(
         full_model, train_loader, val_loader, test_loader,
         epochs=args.epochs, lr=args.lr, device=device, label="Full",
@@ -269,8 +271,8 @@ def main() -> None:
     seq_len = splits["test"]["doc_mask"].sum(dim=1).float().mean().item()
     results["actcomm_full"] = {
         "method": "ActComm (Full Seq)",
-        "message_floats": int(seq_len) * HIDDEN_DIM,
-        "message_bytes": int(seq_len) * HIDDEN_DIM * 2,
+        "message_floats": int(seq_len) * hidden_dim,
+        "message_bytes": int(seq_len) * hidden_dim * 2,
         "avg_nonpad_tokens": seq_len,
         "best_val_accuracy": full_res["best_val_accuracy"],
         "test_accuracy": full_res["test_accuracy"],

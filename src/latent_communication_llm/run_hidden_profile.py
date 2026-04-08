@@ -533,7 +533,6 @@ def main():
     set_seed(cfg.seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    hidden_dim = 4096  # Qwen3-8B
     num_answers = len(ANSWER_VOCAB)
 
     # ── Step 1: Generate data ──
@@ -582,6 +581,9 @@ def main():
     train_feats = torch.load(out_dir / "train_features.pt", weights_only=True)
     val_feats = torch.load(out_dir / "val_features.pt", weights_only=True)
     test_feats = torch.load(out_dir / "test_features.pt", weights_only=True)
+
+    hidden_dim = int(train_feats["question_hidden"].size(-1))
+    print(f"Using hidden_dim={hidden_dim} (from extracted features)")
 
     train_loader = make_loader(train_feats, cfg, shuffle=True)
     val_loader = make_loader(val_feats, cfg, shuffle=False)

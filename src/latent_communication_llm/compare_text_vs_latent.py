@@ -70,11 +70,11 @@ def main() -> None:
 
     tokenizer, qwen_model = run_module.load_qwen_model(args.model_path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    hidden_dim = int(getattr(qwen_model.config, "hidden_size", 4096))
 
     dataset_cfg = run_module.DatasetConfig(**metadata["dataset"])
     stage_cfg_data = next(stage for stage in metadata["stages"] if stage["name"] == args.latent_stage)
     stage_cfg = run_module.StageConfig(**stage_cfg_data)
-    hidden_dim = 4096  # Qwen3-8B
     latent_model = run_module.LatentHandoffModel(hidden_dim, len(run_module.ANSWER_VOCAB), dataset_cfg, stage_cfg).to(device)
     latent_model.load_state_dict(torch.load(args.run_dir / f"{args.latent_stage}.pt", map_location="cpu"))
     latent_model.eval()

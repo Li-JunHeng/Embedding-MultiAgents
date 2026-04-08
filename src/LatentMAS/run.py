@@ -2,6 +2,7 @@ import argparse
 import json
 from typing import Dict, List, Tuple
 
+import torch
 from tqdm import tqdm
 
 from data import (
@@ -19,6 +20,7 @@ from methods.baseline import BaselineMethod
 from methods.latent_mas import LatentMASMethod
 from methods.text_mas import TextMASMethod
 from methods.slot_mas import SlotMASMethod
+from methods.memory_mas import MemoryMASMethod
 from models import ModelWrapper
 from utils import auto_device, set_seed
 import time
@@ -86,8 +88,8 @@ def main():
     parser = argparse.ArgumentParser()
 
     # core args for experiments
-    parser.add_argument("--method", choices=["baseline", "text_mas", "latent_mas", "slot_mas"], required=True,
-                        help="Which multi-agent method to run: 'baseline', 'text_mas', 'latent_mas', or 'slot_mas'.")
+    parser.add_argument("--method", choices=["baseline", "text_mas", "latent_mas", "slot_mas", "memory_mas"], required=True,
+                        help="Which multi-agent method to run: 'baseline', 'text_mas', 'latent_mas', 'slot_mas', or 'memory_mas'.")
     parser.add_argument("--model_name", type=str, required=True,
                         help="Model name or local path (e.g. 'Qwen/Qwen3-8B' or a local checkpoint directory).")
     parser.add_argument("--max_samples", type=int, default=-1, help="Number of questions to evaluate; set -1 to use all samples.")
@@ -109,6 +111,16 @@ def main():
     parser.add_argument("--num_slots", type=int, default=4, help="Number of slots for slot_mas compression")
     parser.add_argument("--slot_dim", type=int, default=64, help="Slot dimension for slot_mas bottleneck (default 64)")
     parser.add_argument("--compressor_path", type=str, default=None, help="Path to trained compressor weights for slot_mas")
+    parser.add_argument("--memory_dim", type=int, default=256, help="Compressed retrieval dimension for memory_mas")
+    parser.add_argument(
+        "--memory_device",
+        type=str,
+        default=None,
+        help="For memory_mas only: device for LatentMemoryAdapter and PerSampleMemoryBank tensors. "
+        "Default: same as --device. Example: --device cuda:0 --memory_device cuda:1 puts Qwen on GPU0 "
+        "and memory compression/retrieval on GPU1.",
+    )
+    parser.add_argument("--allow_cpu_offload", action="store_true", help="Allow HuggingFace auto/offloaded placement onto CPU or disk. Disabled by default because it can be extremely slow.")
     parser.add_argument("--seed", type=int, default=42)
 
     # vLLM support
@@ -126,9 +138,15 @@ def main():
         args.enable_prefix_caching = True
     if args.method == "slot_mas":
         args.use_vllm = False
+    if args.method == "memory_mas" and args.use_vllm:
+        raise ValueError("memory_mas currently supports only the HuggingFace backend. Please rerun without --use_vllm.")
     
     set_seed(args.seed)
     device = auto_device(args.device)
+    if args.method == "memory_mas" and args.memory_device is not None:
+        args.memory_device = str(torch.device(args.memory_device))
+    elif args.method == "memory_mas":
+        args.memory_device = str(device)
     model = ModelWrapper(args.model_name, device, use_vllm=args.use_vllm, args=args)
     
     start_time = time.time()
@@ -171,6 +189,16 @@ def main():
             latent_steps=args.latent_steps,
             num_slots=args.num_slots,
             slot_dim=args.slot_dim,
+            judger_max_new_tokens=args.max_new_tokens,
+            **common_kwargs,
+            generate_bs=args.generate_bs,
+            args=args,
+        )
+    elif args.method == 'memory_mas':
+        method = MemoryMASMethod(
+            model,
+            latent_steps=args.latent_steps,
+            memory_dim=args.memory_dim,
             judger_max_new_tokens=args.max_new_tokens,
             **common_kwargs,
             generate_bs=args.generate_bs,
@@ -266,6 +294,9 @@ def main():
         result_dict["total_msg_bytes"] = method._msg_bytes * 3  # 3 non-judger agents
     elif args.method == "latent_mas":
         result_dict["latent_steps"] = args.latent_steps
+    elif args.method == "memory_mas":
+        result_dict["latent_steps"] = args.latent_steps
+        result_dict["memory_dim"] = args.memory_dim
     print(json.dumps(result_dict, ensure_ascii=False))
 
 

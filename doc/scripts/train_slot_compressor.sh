@@ -1,8 +1,12 @@
 #!/bin/bash
 # Train slot compressor (recommended pipeline)
-# Usage: bash scripts/train_slot_compressor.sh <MODEL_PATH> [TASK] [GPUS]
-# Example: bash scripts/train_slot_compressor.sh Qwen/Qwen3-8B gsm8k 0,1,2
+# Usage: bash doc/scripts/train_slot_compressor.sh <MODEL_PATH> [TASK] [GPUS]
+# Example: bash doc/scripts/train_slot_compressor.sh Qwen/Qwen3-8B gsm8k 0,1,2
 set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$REPO_ROOT"
 
 MODEL="${1:?Usage: $0 <model_path> [task] [gpu_ids]}"
 TASK="${2:-gsm8k}"

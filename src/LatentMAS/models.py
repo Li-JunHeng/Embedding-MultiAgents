@@ -23,8 +23,18 @@ def _ensure_pad_token(tokenizer: AutoTokenizer) -> None:
 def _past_length(past_key_values: Optional[Tuple]) -> int:
     if not past_key_values:
         return 0
+    # transformers 5.x: past_key_values may be DynamicCache (not tuple-indexable)
+    if hasattr(past_key_values, "get_seq_length"):
+        return int(past_key_values.get_seq_length())
     k = past_key_values[0][0]
     return k.shape[-2]
+
+
+def _device_map_contains_offload(device_map: Dict) -> bool:
+    for location in device_map.values():
+        if location in {"cpu", "disk", "meta"}:
+            return True
+    return False
 
 
 class ModelWrapper:
@@ -70,12 +80,36 @@ class ModelWrapper:
         # fallback: normal transformers path
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
         _ensure_pad_token(self.tokenizer)
+        dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+        allow_cpu_offload = bool(getattr(args, "allow_cpu_offload", False)) if args else False
         with torch.no_grad():
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                torch_dtype=(torch.bfloat16 if torch.cuda.is_available() else torch.float32),
-                device_map="auto",
-            )
+            if self.device.type == "cuda":
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    torch_dtype=dtype,
+                    low_cpu_mem_usage=True,
+                )
+                self.model.to(self.device)
+                print(f"[HF] Loaded model on device {self.device} without auto offload")
+            else:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    torch_dtype=dtype,
+                    low_cpu_mem_usage=True,
+                )
+                self.model.to(self.device)
+                print(f"[HF] Loaded model on device {self.device}")
+
+        hf_device_map = getattr(self.model, "hf_device_map", None)
+        if hf_device_map:
+            print(f"[HF] device_map={hf_device_map}")
+            if _device_map_contains_offload(hf_device_map) and not allow_cpu_offload:
+                raise RuntimeError(
+                    "Detected CPU/disk offload in hf_device_map. "
+                    "This usually causes severe slowdown. "
+                    "Free GPU memory or rerun on a larger GPU; "
+                    "pass --allow_cpu_offload only if you explicitly want this behavior."
+                )
         if len(self.tokenizer) != self.model.get_input_embeddings().weight.shape[0]:
             # Only resize if truly needed and not a cache artifact
             if len(self.tokenizer) < self.model.get_input_embeddings().weight.shape[0]:
@@ -249,15 +283,8 @@ class ModelWrapper:
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids, device=self.device)
         prompt_lengths = attention_mask.sum(dim=1).tolist()
-        cache_position = None
         if past_key_values is not None:
             past_len = _past_length(past_key_values)
-            cache_position = torch.arange(
-                past_len,
-                past_len + input_ids.shape[-1],
-                dtype=torch.long,
-                device=self.device,
-            )
             if past_len > 0:
                 past_mask = torch.ones(
                     (attention_mask.shape[0], past_len),
@@ -265,6 +292,8 @@ class ModelWrapper:
                     device=attention_mask.device,
                 )
                 attention_mask = torch.cat([past_mask, attention_mask], dim=-1)
+        # Do not pass cache_position: many causal LMs (e.g. Qwen3) do not accept it in
+        # forward(); transformers>=4.40 then raises in _validate_model_kwargs.
         outputs = self.model.generate(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -276,7 +305,6 @@ class ModelWrapper:
             return_dict_in_generate=True,
             output_scores=False,
             past_key_values=past_key_values,
-            cache_position=cache_position,
         )
         sequences = outputs.sequences
         generations: List[str] = []
@@ -295,67 +323,75 @@ class ModelWrapper:
         )["input_ids"].to(self.device)
 
     @torch.no_grad()
-    def generate_latent_batch(
+    def rollout_latent_sequence(
         self,
         input_ids: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         *,
         latent_steps: int,
         past_key_values: Optional[Tuple] = None,
-    ) -> Tuple:
+        prefix_embeds: Optional[torch.Tensor] = None,
+    ) -> Tuple[Tuple, torch.Tensor, torch.Tensor]:
         if input_ids.dim() != 2:
             raise ValueError("input_ids must be 2D with shape [batch, seq_len]")
 
+        embedding_layer = self.model.get_input_embeddings()
+        model_device = embedding_layer.weight.device
+        model_dtype = embedding_layer.weight.dtype
+
+        input_ids = input_ids.to(model_device)
         if attention_mask is None:
-            attention_mask = torch.ones_like(input_ids, device=self.device)
+            attention_mask = torch.ones_like(input_ids, device=model_device)
         else:
-            attention_mask = attention_mask.to(self.device)
+            attention_mask = attention_mask.to(model_device)
+
+        prompt_embeds = embedding_layer(input_ids)
+        if prefix_embeds is not None:
+            prefix_embeds = prefix_embeds.to(device=model_device, dtype=model_dtype)
+            prefix_mask = torch.ones(
+                prefix_embeds.shape[0],
+                prefix_embeds.shape[1],
+                dtype=attention_mask.dtype,
+                device=model_device,
+            )
+            inputs_embeds = torch.cat([prefix_embeds, prompt_embeds], dim=1)
+            full_mask = torch.cat([prefix_mask, attention_mask], dim=1)
+        else:
+            inputs_embeds = prompt_embeds
+            full_mask = attention_mask
 
         if past_key_values is not None:
             past_len = _past_length(past_key_values)
             if past_len > 0:
                 past_mask = torch.ones(
-                    (attention_mask.shape[0], past_len),
-                    dtype=attention_mask.dtype,
-                    device=attention_mask.device,
+                    (full_mask.shape[0], past_len),
+                    dtype=full_mask.dtype,
+                    device=full_mask.device,
                 )
-                attention_mask = torch.cat([past_mask, attention_mask], dim=-1)
+                full_mask = torch.cat([past_mask, full_mask], dim=-1)
 
         outputs = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
+            inputs_embeds=inputs_embeds,
+            attention_mask=full_mask,
             past_key_values=past_key_values,
             use_cache=True,
             output_hidden_states=True,
             return_dict=True,
         )
         past = outputs.past_key_values
+        last_hidden = outputs.hidden_states[-1][:, -1, :]
+        hidden_seq_parts: List[torch.Tensor] = [last_hidden.unsqueeze(1).detach().clone()]
 
-        e_t = outputs.hidden_states[0][:, -1, :]          # [B, D]
-        last_hidden = outputs.hidden_states[-1][:, -1, :] # [B, D]
-        h_t = last_hidden.detach().clone()
-
-        e_t_plus_1 = None
-        latent_vecs_all: List[torch.Tensor] = []
-        latent_vecs_all.append(e_t.detach().clone())
-
-        for step in range(latent_steps):
-
-            source_model = self.HF_model if hasattr(self, "HF_model") else self.model
-            latent_vec = self._apply_latent_realignment(last_hidden, source_model)
-
-            latent_vecs_all.append(latent_vec.detach().clone())
-
-            if step == 0:
-                e_t_plus_1 = latent_vec.detach().clone()
-            
+        for _ in range(latent_steps):
+            latent_vec = self._apply_latent_realignment(last_hidden, self.model)
             latent_embed = latent_vec.unsqueeze(1)
+            hidden_seq_parts.append(latent_embed.detach().clone())
 
             past_len = _past_length(past)
             latent_mask = torch.ones(
                 (latent_embed.shape[0], past_len + 1),
                 dtype=torch.long,
-                device=self.device,
+                device=model_device,
             )
             outputs = self.model(
                 inputs_embeds=latent_embed,
@@ -368,6 +404,24 @@ class ModelWrapper:
             past = outputs.past_key_values
             last_hidden = outputs.hidden_states[-1][:, -1, :]
 
+        hidden_seq_for_memory = torch.cat(hidden_seq_parts, dim=1)
+        return past, hidden_seq_for_memory, last_hidden
+
+    @torch.no_grad()
+    def generate_latent_batch(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        *,
+        latent_steps: int,
+        past_key_values: Optional[Tuple] = None,
+    ) -> Tuple:
+        past, _, _ = self.rollout_latent_sequence(
+            input_ids,
+            attention_mask=attention_mask,
+            latent_steps=latent_steps,
+            past_key_values=past_key_values,
+        )
         return past
     
     @torch.no_grad()
@@ -434,4 +488,3 @@ class ModelWrapper:
             curr_output_embedding.append(latent_embed.detach())
 
         return past, torch.cat(curr_output_embedding, dim=1) # Output input embeddings
-

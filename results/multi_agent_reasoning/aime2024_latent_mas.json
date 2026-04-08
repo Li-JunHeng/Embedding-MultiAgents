@@ -1,1 +1,0 @@
-{"method": "latent_mas", "model": "/data1/liyuejia/models/Qwen3-14B", "task": "aime2024", "prompt": "sequential", "split": "test", "seed": 42, "max_samples": 30, "accuracy": 0.06666666666666667, "correct": 2, "total": 30, "total_time_sec": 4112.5576, "time_per_sample_sec": 137.0853, "latent_steps": 10}

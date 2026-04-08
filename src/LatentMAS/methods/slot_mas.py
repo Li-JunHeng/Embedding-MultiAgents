@@ -162,68 +162,15 @@ class SlotMASMethod:
         attention_mask: torch.Tensor,
         prev_slots_decoded: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Run one agent: optional slot prefix → forward → latent steps → compress."""
-        input_ids = input_ids.to(self._device)
-        attention_mask = attention_mask.to(self._device)
-        prompt_embeds = self.embedding_layer(input_ids)
-
-        # Prepend decoded slots from previous agents as soft prefix
-        if prev_slots_decoded is not None:
-            prev_slots_decoded = prev_slots_decoded.to(prompt_embeds.device)
-            inputs_embeds = torch.cat([prev_slots_decoded, prompt_embeds], dim=1)
-            slot_mask = torch.ones(
-                prev_slots_decoded.shape[0],
-                prev_slots_decoded.shape[1],
-                dtype=attention_mask.dtype,
-                device=attention_mask.device,
-            )
-            full_mask = torch.cat([slot_mask, attention_mask], dim=1)
-        else:
-            inputs_embeds = prompt_embeds
-            full_mask = attention_mask
-
-        # Forward pass
-        outputs = self.model.model(
-            inputs_embeds=inputs_embeds,
-            attention_mask=full_mask,
-            use_cache=True,
-            output_hidden_states=True,
-            return_dict=True,
+        """Run one agent: optional slot prefix → latent rollout → compress."""
+        _, hidden_seq, _ = self.model.rollout_latent_sequence(
+            input_ids,
+            attention_mask=attention_mask,
+            latent_steps=self.latent_steps,
+            prefix_embeds=prev_slots_decoded,
         )
-        past_kv = outputs.past_key_values
-        last_hidden = outputs.hidden_states[-1][:, -1:, :]
-
-        # Latent reasoning steps
-        all_hiddens = [last_hidden]
-        for _ in range(self.latent_steps):
-            latent_vec = self.model._apply_latent_realignment(
-                last_hidden.squeeze(1), self.model.model
-            )
-            latent_embed = latent_vec.unsqueeze(1)
-            past_len = past_kv[0][0].shape[-2]
-            latent_mask = torch.ones(
-                latent_embed.shape[0],
-                past_len + 1,
-                dtype=torch.long,
-                device=self._device,
-            )
-            outputs = self.model.model(
-                inputs_embeds=latent_embed,
-                attention_mask=latent_mask,
-                past_key_values=past_kv,
-                use_cache=True,
-                output_hidden_states=True,
-                return_dict=True,
-            )
-            past_kv = outputs.past_key_values
-            last_hidden = outputs.hidden_states[-1][:, -1:, :]
-            all_hiddens.append(last_hidden)
-
-        # Compress: slot attention over latent hidden sequence
-        hidden_seq = torch.cat(all_hiddens, dim=1)  # (B, 1+latent_steps, D)
+        hidden_seq = hidden_seq.to(device=self._device, dtype=self._dtype)
         compressed, decoded = self.compressor(hidden_seq)
-        # compressed: (B, num_slots, slot_dim) — the transmitted message
-        # decoded: (B, num_slots, D) — reconstructed embeddings for next agent
         return compressed, decoded
 
     @torch.no_grad()
