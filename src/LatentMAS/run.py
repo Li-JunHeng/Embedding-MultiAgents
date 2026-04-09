@@ -113,6 +113,16 @@ def main():
     parser.add_argument("--compressor_path", type=str, default=None, help="Path to trained compressor weights for slot_mas")
     parser.add_argument("--memory_dim", type=int, default=256, help="Compressed retrieval dimension for memory_mas")
     parser.add_argument("--adapter_path", type=str, default=None, help="Path to trained LatentMemoryAdapter weights for memory_mas")
+    parser.add_argument("--memory_segment_length", type=int, default=4, help="Segment length for hierarchical shared memory in memory_mas")
+    parser.add_argument("--memory_top_agents", type=int, default=2, help="Top agent summaries to route through in memory_mas")
+    parser.add_argument("--memory_top_clusters", type=int, default=4, help="Top thought clusters to retrieve in memory_mas")
+    parser.add_argument("--memory_top_segments", type=int, default=4, help="Top L1 segments to fetch in memory_mas")
+    parser.add_argument("--memory_max_prefix_tokens", type=int, default=64, help="Maximum retrieved prefix tokens injected into each agent in memory_mas")
+    parser.add_argument("--memory_gate_scale", type=float, default=4.0, help="Sigmoid scale applied to cosine gating in memory_mas")
+    parser.add_argument("--memory_merge_threshold", type=float, default=0.92, help="Cosine threshold for merging segments into consensus clusters in memory_mas")
+    parser.add_argument("--memory_difference_threshold", type=float, default=0.55, help="Cosine threshold below which segments become difference clusters in memory_mas")
+    parser.add_argument("--memory_difference_boost", type=float, default=1.25, help="Priority boost for difference clusters in memory_mas")
+    parser.add_argument("--memory_consensus_penalty", type=float, default=0.85, help="Priority downweight for consensus clusters in memory_mas")
     parser.add_argument(
         "--memory_device",
         type=str,
@@ -299,6 +309,16 @@ def main():
         result_dict["latent_steps"] = args.latent_steps
         result_dict["memory_dim"] = args.memory_dim
         result_dict["adapter_path"] = args.adapter_path
+        result_dict["memory_segment_length"] = args.memory_segment_length
+        result_dict["memory_top_agents"] = args.memory_top_agents
+        result_dict["memory_top_clusters"] = args.memory_top_clusters
+        result_dict["memory_top_segments"] = args.memory_top_segments
+        result_dict["memory_max_prefix_tokens"] = args.memory_max_prefix_tokens
+        result_dict["memory_gate_scale"] = args.memory_gate_scale
+        result_dict["memory_merge_threshold"] = args.memory_merge_threshold
+        result_dict["memory_difference_threshold"] = args.memory_difference_threshold
+        result_dict["memory_difference_boost"] = args.memory_difference_boost
+        result_dict["memory_consensus_penalty"] = args.memory_consensus_penalty
     print(json.dumps(result_dict, ensure_ascii=False))
 
 

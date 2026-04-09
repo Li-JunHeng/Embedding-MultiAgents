@@ -64,6 +64,18 @@ class MemoryMASMethod:
         self.memory_adapter = LatentMemoryAdapter(d_model=d_model, memory_dim=memory_dim).to(self._memory_device).to(
             self._dtype
         )
+        self.bank_kwargs = {
+            'segment_length': int(getattr(args, 'memory_segment_length', 4)),
+            'top_agents': int(getattr(args, 'memory_top_agents', 2)),
+            'top_clusters': int(getattr(args, 'memory_top_clusters', 4)),
+            'top_segments': int(getattr(args, 'memory_top_segments', 4)),
+            'max_prefix_tokens': int(getattr(args, 'memory_max_prefix_tokens', 64)),
+            'gate_scale': float(getattr(args, 'memory_gate_scale', 4.0)),
+            'merge_threshold': float(getattr(args, 'memory_merge_threshold', 0.92)),
+            'difference_threshold': float(getattr(args, 'memory_difference_threshold', 0.55)),
+            'difference_boost': float(getattr(args, 'memory_difference_boost', 1.25)),
+            'consensus_penalty': float(getattr(args, 'memory_consensus_penalty', 0.85)),
+        }
 
         adapter_path = getattr(args, "adapter_path", None)
         if adapter_path:
@@ -115,15 +127,24 @@ class MemoryMASMethod:
         bank: PerSampleMemoryBank,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-    ) -> Optional[torch.Tensor]:
+    ) -> tuple[Optional[torch.Tensor], Dict]:
         if bank.is_empty():
-            return None
+            return None, {
+                'selected_agents': [],
+                'selected_clusters': [],
+                'selected_segments': [],
+                'gate_weights': [],
+                'prefix_tokens': 0,
+                'consensus_clusters': 0,
+                'difference_clusters': 0,
+            }
         _, _, query_hidden = self.model.rollout_latent_sequence(
             input_ids,
             attention_mask=attention_mask,
             latent_steps=0,
         )
-        return bank.read(query_hidden, self.memory_adapter)
+        prefix, read_stats = bank.read(query_hidden, self.memory_adapter, return_stats=True)
+        return prefix, read_stats
 
     def _generate_with_prefix(
         self,
@@ -188,14 +209,14 @@ class MemoryMASMethod:
 
     @torch.no_grad()
     def run_item(self, item: Dict) -> Dict:
-        bank = PerSampleMemoryBank()
+        bank = PerSampleMemoryBank(**self.bank_kwargs)
         agent_trace: List[Dict] = []
         final_text = ''
 
-        for agent in self.agents:
+        for agent_index, agent in enumerate(self.agents):
             prompt, input_ids, attention_mask, input_tokens = self._prepare_prompt(item, agent.role)
             memory_tokens_available = bank.total_tokens()
-            memory_prefix = self._read_memory_prefix(bank, input_ids, attention_mask)
+            memory_prefix, read_stats = self._read_memory_prefix(bank, input_ids, attention_mask)
             memory_read_used = memory_prefix is not None
 
             if agent.role != 'judger':
@@ -206,7 +227,13 @@ class MemoryMASMethod:
                     prefix_embeds=memory_prefix,
                 )
                 hidden_for_bank = hidden_seq.to(device=self._memory_device, dtype=self._dtype)
-                memory_tokens_written = bank.add(agent.role, hidden_for_bank, self.memory_adapter)
+                memory_tokens_written = bank.add(
+                    agent.role,
+                    hidden_for_bank,
+                    self.memory_adapter,
+                    agent_index=agent_index,
+                )
+                write_stats = bank.last_write_stats
                 trimmed_ids = input_ids[0][attention_mask[0].bool()].to('cpu').tolist()
                 agent_trace.append(
                     {
@@ -220,6 +247,17 @@ class MemoryMASMethod:
                         'memory_read_used': memory_read_used,
                         'memory_tokens_available': memory_tokens_available,
                         'memory_tokens_written': memory_tokens_written,
+                        'memory_routed_agents': read_stats.get('selected_agents', []),
+                        'memory_routed_clusters': read_stats.get('selected_clusters', []),
+                        'memory_selected_segments': read_stats.get('selected_segments', []),
+                        'memory_gate_weights': read_stats.get('gate_weights', []),
+                        'memory_prefix_tokens': read_stats.get('prefix_tokens', 0),
+                        'memory_consensus_clusters': read_stats.get('consensus_clusters', 0),
+                        'memory_difference_clusters': read_stats.get('difference_clusters', 0),
+                        'memory_segments_written': write_stats.get('segments_written', 0),
+                        'memory_consensus_merges': write_stats.get('consensus_merges', 0),
+                        'memory_difference_segments': write_stats.get('difference_segments', 0),
+                        'memory_neutral_segments': write_stats.get('neutral_segments', 0),
                         'output': '',
                     }
                 )
@@ -237,6 +275,13 @@ class MemoryMASMethod:
                         'memory_read_used': memory_read_used,
                         'memory_tokens_available': memory_tokens_available,
                         'memory_tokens_written': 0,
+                        'memory_routed_agents': read_stats.get('selected_agents', []),
+                        'memory_routed_clusters': read_stats.get('selected_clusters', []),
+                        'memory_selected_segments': read_stats.get('selected_segments', []),
+                        'memory_gate_weights': read_stats.get('gate_weights', []),
+                        'memory_prefix_tokens': read_stats.get('prefix_tokens', 0),
+                        'memory_consensus_clusters': read_stats.get('consensus_clusters', 0),
+                        'memory_difference_clusters': read_stats.get('difference_clusters', 0),
                         'output': final_text,
                     }
                 )
@@ -252,6 +297,7 @@ class MemoryMASMethod:
             'correct': ok,
             'memory_dim': self.memory_dim,
             'total_memory_tokens': bank.total_tokens(),
+            'memory_stats': bank.stats(),
         }
 
     @torch.no_grad()

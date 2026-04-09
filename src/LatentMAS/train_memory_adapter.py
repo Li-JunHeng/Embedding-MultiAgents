@@ -40,6 +40,21 @@ from prompts import build_agent_message_sequential_latent_mas
 from data import load_gsm8k, load_arc_challenge, load_gpqa_diamond, load_arc_easy
 
 
+def _bank_from_args(args: argparse.Namespace) -> PerSampleMemoryBank:
+    return PerSampleMemoryBank(
+        segment_length=int(getattr(args, "memory_segment_length", 4)),
+        top_agents=int(getattr(args, "memory_top_agents", 2)),
+        top_clusters=int(getattr(args, "memory_top_clusters", 4)),
+        top_segments=int(getattr(args, "memory_top_segments", 4)),
+        max_prefix_tokens=int(getattr(args, "memory_max_prefix_tokens", 64)),
+        gate_scale=float(getattr(args, "memory_gate_scale", 4.0)),
+        merge_threshold=float(getattr(args, "memory_merge_threshold", 0.92)),
+        difference_threshold=float(getattr(args, "memory_difference_threshold", 0.55)),
+        difference_boost=float(getattr(args, "memory_difference_boost", 1.25)),
+        consensus_penalty=float(getattr(args, "memory_consensus_penalty", 0.85)),
+    )
+
+
 def collect_hidden_states_memory_aligned(
     model: ModelWrapper,
     task_data: list,
@@ -84,9 +99,9 @@ def collect_hidden_states_memory_aligned(
         if i % 50 == 0:
             print(f"  [{i}/{max_samples}]")
 
-        bank = PerSampleMemoryBank()
+        bank = _bank_from_args(args)
 
-        for agent in agents:
+        for agent_index, agent in enumerate(agents):
             if agent.role == "judger":
                 continue
 
@@ -132,7 +147,12 @@ def collect_hidden_states_memory_aligned(
 
                 # Add to bank for next agent's prefix
                 hidden_for_bank = hidden_seq.to(device=device, dtype=dtype)
-                bank.add(agent.role, hidden_for_bank, teacher)
+                bank.add(
+                    agent.role,
+                    hidden_for_bank,
+                    teacher,
+                    agent_index=agent_index,
+                )
 
         torch.cuda.empty_cache()
 
@@ -289,6 +309,16 @@ def main() -> None:
                         help="Comma-separated memory_dims to train and save")
     parser.add_argument("--cache_tag", type=str, default="",
                         help="Suffix for cache file to avoid mixing caches")
+    parser.add_argument("--memory_segment_length", type=int, default=4)
+    parser.add_argument("--memory_top_agents", type=int, default=2)
+    parser.add_argument("--memory_top_clusters", type=int, default=4)
+    parser.add_argument("--memory_top_segments", type=int, default=4)
+    parser.add_argument("--memory_max_prefix_tokens", type=int, default=64)
+    parser.add_argument("--memory_gate_scale", type=float, default=4.0)
+    parser.add_argument("--memory_merge_threshold", type=float, default=0.92)
+    parser.add_argument("--memory_difference_threshold", type=float, default=0.55)
+    parser.add_argument("--memory_difference_boost", type=float, default=1.25)
+    parser.add_argument("--memory_consensus_penalty", type=float, default=0.85)
     args = parser.parse_args()
     args.method = "memory_mas"
 

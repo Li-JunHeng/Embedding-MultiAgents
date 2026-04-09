@@ -33,8 +33,12 @@ cat > "$RUN_DIR/meta.json" <<EOF
   "max_new_tokens": 8192,
   "latent_steps": 10,
   "memory_dim": 256,
+  "memory_segment_length": 4,
+  "memory_top_agents": 2,
+  "memory_top_clusters": 4,
+  "memory_top_segments": 4,
   "run_dir": "$(pwd)/$RUN_DIR",
-  "note": "AIME 2025 memory_mas; monitor with doc/scripts/monitor_repro.sh"
+  "note": "AIME 2025 hierarchical shared-memory memory_mas; monitor with doc/scripts/monitor_repro.sh"
 }
 EOF
 
@@ -48,7 +52,7 @@ echo \$\$ > /root/autodl-fs/Embedding-MultiAgents/$RUN_DIR/repro.pid
 echo "=============================================="
 echo "memory_mas AIME 2025 (train split, full set) — \$(date -Is)"
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
-echo "MODEL=${MODEL_LOCAL:-/root/autodl-tmp/Qwen3-8B} max_samples=-1 (all) latent_steps=10 memory_dim=256 max_new_tokens=8192"
+echo "MODEL=${MODEL_LOCAL:-/root/autodl-tmp/Qwen3-8B} max_samples=-1 (all) latent_steps=10 memory_dim=256 segment_length=4 max_new_tokens=8192"
 echo "RUN_DIR=/root/autodl-fs/Embedding-MultiAgents/$RUN_DIR"
 echo "=============================================="
 CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES uv run python -u src/LatentMAS/run.py \\
@@ -63,7 +67,11 @@ CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES uv run python -u src/LatentMAS/run.py
   --seed 42 \\
   --latent_steps 10 \\
   --think \\
-  --memory_dim 256
+  --memory_dim 256 \\
+  --memory_segment_length 4 \\
+  --memory_top_agents 2 \\
+  --memory_top_clusters 4 \\
+  --memory_top_segments 4
 
 echo ""
 echo "ALL DONE — \$(date -Is)"
